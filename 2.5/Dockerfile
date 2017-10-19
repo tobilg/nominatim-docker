@@ -1,10 +1,13 @@
 FROM ubuntu:trusty
-MAINTAINER winsent <pipetc@gmail.com>
+MAINTAINER TobiLG <tobilg@gmail.com>
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV LANG C.UTF-8
-RUN locale-gen en_US.UTF-8
-RUN update-locale LANG=en_US.UTF-8
+ENV NOMINATIM_VERSION v.2.5.0
+ARG PBF_DATA=http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf
+
+RUN locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8
 
 # Install packages http://wiki.openstreetmap.org/wiki/Nominatim/Installation#Ubuntu.2FDebian
 RUN apt-get -y update --fix-missing && \
@@ -27,11 +30,10 @@ RUN echo "host all  all    0.0.0.0/0  trust" >> /etc/postgresql/9.3/main/pg_hba.
     echo "listen_addresses='*'" >> /etc/postgresql/9.3/main/postgresql.conf
 
 # Nominatim install
-ENV NOMINATIM_VERSION v.2.5.0
-RUN git clone --recursive https://github.com/openstreetmap/Nominatim ./src
-RUN cd ./src && git checkout $NOMINATIM_VERSION && git submodule update --recursive --init && \
-  ./autogen.sh && ./configure && make
 
+RUN git clone --recursive https://github.com/openstreetmap/Nominatim ./src && \
+    cd ./src && git checkout $NOMINATIM_VERSION && git submodule update --recursive --init && \
+    ./autogen.sh && ./configure && make
 
 # Nominatim create site
 COPY local.php ./src/settings/local.php
@@ -41,8 +43,9 @@ RUN rm -rf /var/www/html/* && ./src/utils/setup.php --create-website /var/www/ht
 COPY nominatim.conf /etc/apache2/sites-enabled/000-default.conf
 
 # Load initial data
-ARG PBF_DATA=http://download.geofabrik.de/europe/monaco-latest.osm.pbf
 RUN curl -L $PBF_DATA --create-dirs -o /app/src/data.osm.pbf
+
+# Start applications
 RUN service postgresql start && \
     sudo -u postgres psql postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='nominatim'" | grep -q 1 || sudo -u postgres createuser -s nominatim && \
     sudo -u postgres psql postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='www-data'" | grep -q 1 || sudo -u postgres createuser -SDR www-data && \
